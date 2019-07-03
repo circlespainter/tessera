@@ -1,6 +1,7 @@
 package com.quorum.tessera.config.migration;
 
 import com.moandjiezana.toml.Toml;
+import com.quorum.tessera.config.AppType;
 import com.quorum.tessera.config.ArgonOptions;
 import com.quorum.tessera.config.SslAuthenticationMode;
 import com.quorum.tessera.config.builder.ConfigBuilder;
@@ -13,9 +14,8 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static java.util.Collections.emptyList;
 
@@ -74,6 +74,10 @@ public class TomlConfigFactory {
         final Optional<String> tlsclientcert = Optional.ofNullable(toml.getString("tlsclientcert"));
         final Optional<List<String>> tlsclientchainnames = Optional.ofNullable(toml.getList("tlsclientchain", emptyList()));
         final Optional<String> tlsknownservers = Optional.ofNullable(toml.getString("tlsknownservers"));
+        final EnumSet<AppType> appTypes =
+            toml.getList("apptypes", Arrays.asList(AppType.Q2T.name(), AppType.P2P.name())).stream()
+                .map(AppType::valueOf)
+                .collect(Collectors.toCollection(() -> EnumSet.noneOf(AppType.class)));
 
         ConfigBuilder configBuilder = ConfigBuilder.create()
             .serverPort(port)
@@ -85,7 +89,8 @@ public class TomlConfigFactory {
             .peers(othernodes)
             .alwaysSendTo(alwaysSendToKeyPaths)
             .useWhiteList(useWhiteList)
-            .workdir(workdir);
+            .workdir(workdir)
+            .appTypes(appTypes);
 
         tlsserverkey.ifPresent(configBuilder::sslServerTlsKeyPath);
         tlsservercert.ifPresent(configBuilder::sslServerTlsCertificatePath);

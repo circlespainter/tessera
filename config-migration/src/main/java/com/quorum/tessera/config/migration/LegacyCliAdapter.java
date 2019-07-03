@@ -3,6 +3,7 @@ package com.quorum.tessera.config.migration;
 import com.quorum.tessera.cli.CliAdapter;
 import com.quorum.tessera.cli.CliResult;
 import com.quorum.tessera.cli.CliType;
+import com.quorum.tessera.config.AppType;
 import com.quorum.tessera.config.Config;
 import com.quorum.tessera.config.KeyConfiguration;
 import com.quorum.tessera.config.SslAuthenticationMode;
@@ -25,8 +26,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class LegacyCliAdapter implements CliAdapter {
 
@@ -206,6 +210,16 @@ public class LegacyCliAdapter implements CliAdapter {
         Optional.ofNullable(line.getOptionValue("tlsknownclients"))
                 .ifPresent(configBuilder::sslKnownClientsFile);
 
+        Optional.ofNullable(line.getOptionValues("apis"))
+                .map(
+                    (apis) ->
+                        Stream
+                            .of(apis)
+                            .map(AppType::valueOf)
+                            .collect(Collectors.toCollection(() -> EnumSet.noneOf(AppType.class)))
+                )
+                .ifPresent(configBuilder::appTypes);
+
         final KeyConfiguration keyConfiguration = keyDataBuilder.build();
 
         if (!keyConfiguration.getKeyData().isEmpty()) {
@@ -261,6 +275,16 @@ public class LegacyCliAdapter implements CliAdapter {
                         .optionalArg(false)
                         .numberOfArgs(1)
                         .argName("FILE")
+                        .build());
+
+        options.addOption(
+                Option.builder()
+                        .longOpt("apis")
+                        .desc("Comma-separated list of APIs to enable (between P2P, Q2T, THIRD_PARTY, ENCLAVE, ADMIN; default is P2P and Q2T)")
+                        .hasArg(true)
+                        .hasArgs()
+                        .argName("API...")
+                        .valueSeparator(',')
                         .build());
 
         options.addOption(

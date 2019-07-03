@@ -199,7 +199,8 @@ public class LegacyCliAdapterTest {
             "--tlsclientchain=clientchain.file",
             "--tlsclientkey=over-client-key.pem",
             "--tlsclienttrust=tofu",
-            "--tlsknownservers=over-known-servers"
+            "--tlsknownservers=over-known-servers",
+            "--apis=P2P,Q2T,THIRD_PARTY",
         };
 
         CliResult result = instance.execute(args);
@@ -228,6 +229,23 @@ public class LegacyCliAdapterTest {
         assertThat(p2pConfig.getSslConfig().getClientTlsKeyPath().toString()).isEqualTo("override/over-client-key.pem");
         assertThat(p2pConfig.getSslConfig().getClientTrustMode()).isEqualByComparingTo(SslTrustMode.TOFU);
         assertThat(p2pConfig.getSslConfig().getKnownServersFile().toString()).isEqualTo("override/over-known-servers");
+
+        final ServerConfig thirdPartyConfig = this.getServer(AppType.THIRD_PARTY, config.getServerConfigs());
+        assertThat(thirdPartyConfig.getBindingAddress()).isEqualTo("http://override:1111");
+        assertThat(thirdPartyConfig.getServerAddress()).isEqualTo("http://override:1111");
+        assertThat(thirdPartyConfig.getSslConfig().getTls()).isEqualByComparingTo(SslAuthenticationMode.OFF);
+        assertThat(thirdPartyConfig.getSslConfig().getServerTlsCertificatePath().toString()).isEqualTo("override/over-server-cert.pem");
+        assertThat(thirdPartyConfig.getSslConfig().getServerTrustCertificates().size()).isEqualTo(1);
+        assertThat(thirdPartyConfig.getSslConfig().getServerTrustCertificates().get(0).toString()).isEqualTo("override/serverchain.file");
+        assertThat(thirdPartyConfig.getSslConfig().getServerTlsKeyPath().toString()).isEqualTo("override/over-server-key.pem");
+        assertThat(thirdPartyConfig.getSslConfig().getServerTrustMode()).isEqualByComparingTo(SslTrustMode.WHITELIST);
+        assertThat(thirdPartyConfig.getSslConfig().getKnownClientsFile().toString()).isEqualTo("override/over-known-clients");
+        assertThat(thirdPartyConfig.getSslConfig().getClientTlsCertificatePath().toString()).isEqualTo("override/over-client-cert.pem");
+        assertThat(thirdPartyConfig.getSslConfig().getClientTrustCertificates().size()).isEqualTo(1);
+        assertThat(thirdPartyConfig.getSslConfig().getClientTrustCertificates().get(0).toString()).isEqualTo("override/clientchain.file");
+        assertThat(thirdPartyConfig.getSslConfig().getClientTlsKeyPath().toString()).isEqualTo("override/over-client-key.pem");
+        assertThat(thirdPartyConfig.getSslConfig().getClientTrustMode()).isEqualByComparingTo(SslTrustMode.TOFU);
+        assertThat(thirdPartyConfig.getSslConfig().getKnownServersFile().toString()).isEqualTo("override/over-known-servers");
 
         assertThat(config.getPeers().size()).isEqualTo(1);
         assertThat(config.getPeers().get(0).getUrl()).isEqualTo("http://others");
@@ -686,6 +704,8 @@ public class LegacyCliAdapterTest {
 
         when(commandLine.getOptionValue("passwords")).thenReturn(privateKeyPasswordFile.toString());
 
+        when(commandLine.getOptionValues("apis")).thenReturn(new String[] { "P2P", "Q2T", "THIRD_PARTY" });
+
         Config result = LegacyCliAdapter.applyOverrides(commandLine, builderWithValidValues, KeyDataBuilder.create()).build();
 
         assertThat(result).isNotNull();
@@ -706,6 +726,20 @@ public class LegacyCliAdapterTest {
         assertThat(p2pConfig.getSslConfig().getClientKeyStore()).isEqualTo(Paths.get("workdirOverride/sslClientKeyStorePath"));
         assertThat(p2pConfig.getSslConfig().getKnownServersFile()).isEqualTo(Paths.get("workdirOverride/tlsknownservers.file"));
         assertThat(p2pConfig.getSslConfig().getKnownClientsFile()).isEqualTo(Paths.get(workdirOverride, "tlsknownclients.file"));
+
+        final ServerConfig thirdPartyConfig = this.getServer(AppType.THIRD_PARTY, result.getServerConfigs());
+        assertThat(thirdPartyConfig.getBindingAddress()).isEqualTo("http://junit.com:" + portOverride);
+        assertThat(thirdPartyConfig.getServerAddress()).isEqualTo("http://junit.com:" + portOverride);
+        assertThat(thirdPartyConfig.getSslConfig().getServerTrustMode()).isEqualTo(SslTrustMode.WHITELIST);
+        assertThat(thirdPartyConfig.getSslConfig().getClientTrustMode()).isEqualTo(SslTrustMode.CA);
+        assertThat(thirdPartyConfig.getSslConfig().getClientTlsCertificatePath()).isEqualTo(Paths.get("workdirOverride/tlsclientcert.cert"));
+        assertThat(thirdPartyConfig.getSslConfig().getServerTlsCertificatePath()).isEqualTo(Paths.get("workdirOverride/tlsservercert.cert"));
+        assertThat(thirdPartyConfig.getSslConfig().getServerTrustCertificates()).containsExactly(Paths.get(workdirOverride, "server1.crt"), Paths.get(workdirOverride, "server2.crt"), Paths.get(workdirOverride, "server3.crt"));
+        assertThat(thirdPartyConfig.getSslConfig().getClientTrustCertificates()).containsExactly(Paths.get(workdirOverride, "client1.crt"), Paths.get(workdirOverride, "client2.crt"), Paths.get(workdirOverride, "client3.crt"));
+        assertThat(thirdPartyConfig.getSslConfig().getServerKeyStore()).isEqualTo(Paths.get("workdirOverride/sslServerKeyStorePath"));
+        assertThat(thirdPartyConfig.getSslConfig().getClientKeyStore()).isEqualTo(Paths.get("workdirOverride/sslClientKeyStorePath"));
+        assertThat(thirdPartyConfig.getSslConfig().getKnownServersFile()).isEqualTo(Paths.get("workdirOverride/tlsknownservers.file"));
+        assertThat(thirdPartyConfig.getSslConfig().getKnownClientsFile()).isEqualTo(Paths.get(workdirOverride, "tlsknownclients.file"));
 
         assertThat(result.getPeers()).containsExactly(overridePeers.toArray(new Peer[0]));
         assertThat(result.getKeys().getKeyData()).hasSize(2);
@@ -759,11 +793,15 @@ public class LegacyCliAdapterTest {
     }
 
     private ServerConfig getQ2tServer(final List<ServerConfig> serverConfigs) {
-        return serverConfigs.stream().filter(config -> AppType.Q2T.equals(config.getApp())).findFirst().orElse(null);
+        return getServer(AppType.Q2T, serverConfigs);
     }
 
     private ServerConfig getP2pServer(final List<ServerConfig> serverConfigs) {
-        return serverConfigs.stream().filter(config -> AppType.P2P.equals(config.getApp())).findFirst().orElse(null);
+        return getServer(AppType.P2P, serverConfigs);
+    }
+
+    private ServerConfig getServer(final AppType appType, final List<ServerConfig> serverConfigs) {
+        return serverConfigs.stream().filter(config -> appType.equals(config.getApp())).findFirst().orElse(null);
     }
 
 }

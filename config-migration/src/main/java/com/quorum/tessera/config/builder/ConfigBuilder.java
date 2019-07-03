@@ -76,6 +76,8 @@ public class ConfigBuilder {
 
     private String workDir;
 
+    private EnumSet<AppType> appTypes;
+
     public ConfigBuilder sslServerTrustMode(SslTrustMode sslServerTrustMode) {
         this.sslServerTrustMode = sslServerTrustMode;
         return this;
@@ -206,6 +208,11 @@ public class ConfigBuilder {
         return this;
     }
 
+    public ConfigBuilder appTypes(EnumSet<AppType> appTypes) {
+        this.appTypes = appTypes;
+        return this;
+    }
+
     static Path toPath(String workDir, String value) {
         final Path path;
 
@@ -254,20 +261,30 @@ public class ConfigBuilder {
                 null
         );
 
-        final ServerConfig q2tConfig = new ServerConfig();
-        q2tConfig.setEnabled(true);
-        q2tConfig.setApp(AppType.Q2T);
-        q2tConfig.setCommunicationType(CommunicationType.REST);
-        q2tConfig.setServerAddress("unix:"+ toPath(workDir, unixSocketFile));
+        final List<ServerConfig> serverConfigs = new ArrayList<>(AppType.values().length);
 
-        final ServerConfig p2pConfig = new ServerConfig();
-        final String port = (serverPort == null) ? "" : ":"+serverPort;
-        final String hostname = (serverHostname == null) ? null : serverHostname + port;
-        p2pConfig.setEnabled(true);
-        p2pConfig.setApp(AppType.P2P);
-        p2pConfig.setCommunicationType(CommunicationType.REST);
-        p2pConfig.setServerAddress(hostname);
-        p2pConfig.setSslConfig(sslConfig);
+        if (appTypes == null || appTypes.isEmpty())
+            appTypes = EnumSet.of(AppType.Q2T, AppType.P2P); // Default
+
+        for (final AppType appType : appTypes) {
+            switch (appType) {
+                case Q2T:
+                    final ServerConfig q2tConfig = new ServerConfig();
+                    q2tConfig.setEnabled(true);
+                    q2tConfig.setApp(AppType.Q2T);
+                    q2tConfig.setCommunicationType(CommunicationType.REST);
+                    q2tConfig.setServerAddress("unix:" + toPath(workDir, unixSocketFile));
+                    serverConfigs.add(q2tConfig);
+                    break;
+
+                case P2P:
+                case THIRD_PARTY:
+                case ADMIN:
+                case ENCLAVE:
+                    serverConfigs.add(restServerConfig(appType, sslConfig));
+                    break;
+            }
+        }
 
         final List<Peer> peerList;
         if(peers != null) {
@@ -290,7 +307,7 @@ public class ConfigBuilder {
         }
 
         final Config config = new Config();
-        config.setServerConfigs(Arrays.asList(q2tConfig, p2pConfig));
+        config.setServerConfigs(serverConfigs);
         config.setJdbcConfig(jdbcConfig);
         config.setPeers(peerList);
         config.setAlwaysSendTo(forwardingKeys);
@@ -298,6 +315,18 @@ public class ConfigBuilder {
         config.setKeys(keyData);
         config.setDisablePeerDiscovery(false);
         return config;
+    }
+
+    private ServerConfig restServerConfig(AppType appType, SslConfig sslConfig) {
+        final ServerConfig p2pConfig = new ServerConfig();
+        final String port = (serverPort == null) ? "" : ":" + serverPort;
+        final String hostname = (serverHostname == null) ? null : serverHostname + port;
+        p2pConfig.setEnabled(true);
+        p2pConfig.setServerAddress(hostname);
+        p2pConfig.setCommunicationType(CommunicationType.REST);
+        p2pConfig.setSslConfig(sslConfig);
+        p2pConfig.setApp(appType);
+        return p2pConfig;
     }
 
 }
